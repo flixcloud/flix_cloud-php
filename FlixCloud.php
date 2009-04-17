@@ -446,7 +446,7 @@ class FlixCloudNotificationHandler {
 // Class for catching and parsing XML data sent from FlixCloud when job is finished.
 // Notification URL must be set in https://flixcloud.com/settings
 class FlixCloudJobNotification {
-
+  var $hash;                   // Original hash
   var $error_message;          // Error message if there was one.
   var $finished_job_at;        // When the job finished. UTC YYYY-MM-DDTHH:MM:SSZ
   var $id;                     // The job's ID
@@ -459,6 +459,7 @@ class FlixCloudJobNotification {
   var $output_media_file;      // Location of output file
 
   function FlixCloudJobNotification($hash) {
+    $this->hash               = $hash;
     $this->error_message      = trim($hash["error-message"]);
     $this->finished_job_at    = trim($hash["finished-job-at"]);
     $this->id                 = trim($hash["id"]);
