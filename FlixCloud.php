@@ -136,7 +136,8 @@ class FlixCloudJob {
 
   var $api_key;     // Provided at https://flixcloud.com/settings
   var $recipe_id;   // Can be found at http://flixcloud.com/overviews/recipes
-
+  var $api_url = "https://www.flixcloud.com/jobs";
+  
   var $input;       // FlixCloudJobInputFile Object
   var $output;      // FlixCloudJobOutputFile Object
   var $watermark;   // FlixCloudJobWatermarkFile Object
@@ -218,7 +219,7 @@ class FlixCloudJob {
     $this->final_xml = $this->get_job_xml();
 
     // Set up cURL connection
-    $ch = curl_init("https://www.flixcloud.com/jobs");
+    $ch = curl_init($this->api_url);
     curl_setopt_array($ch, array(
       CURLOPT_RETURNTRANSFER => 1,
       CURLOPT_HEADER => 0, // Don't return the header in result
