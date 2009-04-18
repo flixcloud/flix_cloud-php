@@ -1,11 +1,11 @@
 FlixCloud API PHP Library
 ==========================
 
-Author:  Steve Heffernan <steve@sevenwire.com>
-Version: 1.0.6
-Date:    04-01-2009
+Author:  Steve Heffernan <steve@sevenwire.com>  
+Version: 1.0.6  
+Date:    04-01-2009  
 
-For more details on the FlixCloud API requirements visit
+For more details on the FlixCloud API requirements visit  
 http://flixcloud.com/api/
 
 There are two main functions: Job Requests, and Notification Handling.
@@ -18,8 +18,8 @@ The FlixCloudJob object uses cURL to send an XML formatted job request to
 https://www.flixcloud.com/jobs. It then uses the SimpleXMLElement library
 to parse any returned XML.
 
- **API key is required and can be found at https://flixcloud.com/settings**
- **Recipe ID is required and can be found at http://flixcloud.com/overviews/recipes**
+ **API key is required and can be found at https://flixcloud.com/settings**  
+ **Recipe ID is required and can be found at http://flixcloud.com/overviews/recipes**  
 
 
 ### EXAMPLE 1
@@ -77,8 +77,8 @@ FlixCloud when a job has been completed.
 The possible states of the FlixCloudJobNotification object are "successful_job",
 "cancelled_job", or "failed_job". A callback function allows you to respond accordingly.
 
-**Notification URL must be set in https://flixcloud.com/settings**
-**A file following the example below should be at that URL**
+**Notification URL must be set in https://flixcloud.com/settings**  
+**A file following the example below should be at that URL**  
 
 ### EXAMPLE
 
