@@ -30,7 +30,7 @@ to parse any returned XML.
     $fcj = new FlixCloudJob("2j1l:kd3add:0:ivzf:2e1y");
     $fcj->recipe_id = 99;
     $fcj->set_input("http://www.example.com/videos/input.mpg"); // Add username/password if needed
-    $fcj->set_output("ftp://www.example.com/httpdocs/videos/output.flv", array("user" => "username", "password" => "password");
+    $fcj->set_output("ftp://www.example.com/httpdocs/videos/output.flv", array("user" => "username", "password" => "password"));
     $fcj->set_watermark("http://www.example.com/videos/watermark.png"); // Add username/password if needed
 
     if($fcj->send()) {
