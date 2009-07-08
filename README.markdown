@@ -2,7 +2,7 @@ FlixCloud API PHP Library
 ==========================
 
 Author:  Steve Heffernan <steve@sevenwire.com>  
-Version: 1.0.6  
+Version: 1.0.7  
 Date:    04-01-2009  
 
 For more details on the FlixCloud API requirements visit  
