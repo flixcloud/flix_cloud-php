@@ -1,11 +1,11 @@
-<?php 
+<?php
 /*
 
   FlixCloud API PHP Library
   Version: 1.0.6
   Author: Steve Heffernan <steve@sevenwire.com>
-  See the README file for info on how to use this library. 
-  
+  See the README file for info on how to use this library.
+
 */
 
 
@@ -15,18 +15,19 @@ class FlixCloudJob {
   var $api_key;     // Provided at https://flixcloud.com/settings
   var $recipe_id;   // Can be found at http://flixcloud.com/overviews/recipes
   var $api_url = "https://www.flixcloud.com/jobs";
-  
+
   var $input;       // FlixCloudJobInputFile Object
   var $output;      // FlixCloudJobOutputFile Object
   var $watermark;   // FlixCloudJobWatermarkFile Object
+  var $thumbnail;   // FlixCloudJobThumbnailFile Object
 
   // cURL Options
   var $timeout = 0; // Time in seconds to timeout send request. 0 is no timeout.
 
   // Dealing with the certificate. Still a sketchy area.
   // If you learn anything from working with it let me know.
-  var $insecure;    // Bypasses verifying the certificate if needed. Like curl -k or --insecure option. Still somewhat secure.
-  var $certificate; // Full path the www.flixcloud.com.pem certificate. Not required most of the time. Look up CURLOPT_CAINFO for more info.
+  var $insecure;    // Bypasses verifying the certificate if needed. Like curl -k or --insecure. Still somewhat secure.
+  var $certificate; // Full path to the www.flixcloud.com.pem certificate. Not required most of the time. Look up CURLOPT_CAINFO for more info.
   var $certificate_dir; // Directory where certs live. Not required most of the time. Look up CURLOPT_CAPATH for more info.
 
   var $success;
@@ -44,13 +45,17 @@ class FlixCloudJob {
     $this->api_key = $api_key;
     if (is_array($params)) {
       if($params["recipe_id"]) $this->recipe_id = $params["recipe_id"];
-      
+
       if($params["input_url"]) $this->set_input($params["input_url"], array("user" => $params["input_user"], "password" => $params["input_password"]));
       if($params["output_url"]) $this->set_output($params["output_url"], array("user" => $params["output_user"], "password" => $params["output_password"]));
       if($params["watermark_url"]) $this->set_watermark($params["watermark_url"], array("user" => $params["watermark_user"], "password" => $params["watermark_password"]));
+      if($params["thumbnail_url"]) $this->set_thumbnail($params["thumbnail_url"], array("prefix" => $params["thumbnail_prefix"], "user" => $params["thumbnail_user"], "password" => $params["thumbnail_password"]));
 
       if($params["insecure"]) $this->insecure = true;
       if($params["certificate"]) $this->certificate = $params["certificate"];
+      
+      if($params["api_url"]) $this->api_url = $params["api_url"];
+      
       // If params array is used it sends by default
       if($params["send"] !== false) $this->send();
     } elseif(intval($params) > 0) {
@@ -73,13 +78,18 @@ class FlixCloudJob {
     $this->watermark = new FlixCloudJobWatermarkFile($url, $params);
   }
 
+  // Create thumbnail file object from URL and option user credentials
+  function set_thumbnail($url, $params = array()) {
+    $this->thumbnail = new FlixCloudJobThumbnailFile($url, $params);
+  }
+
   // Check that all required info is available and valid. Used before sending.
   function validate() {
     if ( !function_exists("curl_version")) $this->errors[] = "cURL is not installed.";
     if ( !$this->api_key) $this->errors[] = "API key is required.";
     if ( !$this->recipe_id || intval($this->recipe_id) <= 0) $this->errors[] = "Recipe ID is required and must be an integer.";
     // Validate the different file types.
-    foreach(array($this->input, $this->output, $this->watermark) as $job_file) {
+    foreach(array($this->input, $this->output, $this->watermark, $this->thumbnail) as $job_file) {
       if($job_file) {
         if ( !$job_file->validate()) $this->errors = array_merge($this->errors, $job_file->errors);
       }
@@ -152,6 +162,7 @@ class FlixCloudJob {
       case "200":
         $xml_obj = get_object_vars(new SimpleXMLElement($this->result));
         $this->errors[] = $xml_obj["error"];
+        $this->array_flatten($this->errors);
         return false;
 
       case "302":
@@ -191,6 +202,11 @@ class FlixCloudJob {
       $watermark_hash = $this->watermark->get_data_hash();
     }
 
+    // Thumbnail is optional. If left blank it won't be included in XML.
+    if($this->thumbnail) {
+      $thumbnail_hash = $this->thumbnail->get_data_hash();
+    }
+
     // API XML in hash form
     // If key is an integer (0 included) value will be added to XML as is.
     $xml_hash = array(
@@ -202,6 +218,7 @@ class FlixCloudJob {
           "input"           => $this->input->get_data_hash(),
           "output"          => $this->output->get_data_hash(),
           "watermark"       => $watermark_hash,
+          "thumbnails"      => $thumbnail_hash,
         ),
       ),
     );
@@ -234,6 +251,18 @@ class FlixCloudJob {
   function tag($tag_name, $tag_content) {
     return '<'.$tag_name.'>'.$tag_content.'</'.$tag_name.'>';
   }
+  
+  // Flatten a basic array. Kinda surpised PHP doesn't have this.
+  function array_flatten(&$array) {
+    foreach($array as $key => $val) {
+      if(is_array($val)) {
+        unset($array[$key]);
+        $this->array_flatten($val);
+        $array = array_merge($array, $val);
+      }
+    }
+    return $array;
+  }
 
 }
 
@@ -246,7 +275,7 @@ class FlixCloudJobFile {
   var $password;      // Password
   var $protocol;      // Set and used in validating.
   var $errors = array();
-  
+
   // Info received from notification
   var $width;     // In pixels
   var $height;    // In pixels
@@ -263,19 +292,6 @@ class FlixCloudJobFile {
   // Validate that all needed data is available.
   function validate() {
     if( !$this->url) $this->errors[] = $this->name." file url required.";
-    if($this->user && !$this->password) $this->errors[] = $this->name." password needed (user supplied).";
-    if($this->password && !$this->user) $this->errors[] = $this->name." user needed (password supplied).";
-    // Check that an appropriate protocol is being used.
-    /*if( !$this->check_protocol()) {
-      $protocol_error = "'".$this->protocol."' is not an accepted protocol for ".strtolower($this->name)." files. ";
-      $protocol_error .= "Accepted protocols include: ";
-      foreach($this->acceptable_protocols as $key => $proto) {
-        $protocol_error .= $proto;
-        // Add commas after all but last
-        $protocol_error .= ($key+1 < count($this->acceptable_protocols)) ? ", " : ".";
-      }
-      $this->errors[] = $protocol_error;
-    }*/
 
     // Return false if any errors.
     if(count($this->errors) > 0) return false;
@@ -296,14 +312,18 @@ class FlixCloudJobFile {
   function get_data_hash() {
     $hash = array("url" => $this->url);
     if($this->user) {
-      $hash["parameters"] = array("user" => $this->user, "password" => $this->password);
+      $hash["parameters"] = array(
+        "user" => $this->user,
+        "password" => $this->password
+      );
     }
     return $hash;
   }
-  
+
   function set_attributes($hash) {
     if(is_array($hash)) {
       foreach($hash as $key => $value) {
+        if(strpos($key, "-")) $key = str_replace("-", "_", $key);
         $this->$key = $value;
       }
     }
@@ -328,6 +348,29 @@ class FlixCloudJobWatermarkFile extends FlixCloudJobFile {
   //var $acceptable_protocols = array("http", "https", "ftp", "sftp", "s3");
 }
 
+// Thumbnail File Data Object
+class FlixCloudJobThumbnailFile extends FlixCloudJobFile {
+  var $name = "Thumbnail";
+  var $prefix;
+  
+  // Info received from notification
+  var $total_size;
+  var $number_of_thumbnails;
+
+  function get_data_hash() {
+    $hash = array("url" => $this->url);
+    $hash["prefix"] = $this->prefix;
+
+    if($this->user) {
+      $hash["parameters"] = array(
+        "user" => $this->user,
+        "password" => $this->password
+      );
+    }
+    return $hash;
+  }
+}
+
 class FlixCloudNotificationHandler {
   function catch_and_parse() {
     $incoming = file_get_contents('php://input');
@@ -339,24 +382,27 @@ class FlixCloudNotificationHandler {
 // Class for catching and parsing XML data sent from FlixCloud when job is finished.
 // Notification URL must be set in https://flixcloud.com/settings
 class FlixCloudJobNotification {
-  
+
   var $original_hash;          // From XML object
-  var $error_message;          // Error message if there was one.
-  var $finished_job_at;        // When the job finished. UTC YYYY-MM-DDTHH:MM:SSZ
+  
   var $id;                     // The job's ID
   var $initialized_job_at;     // When the job was initialized. UTC YYYY-MM-DDTHH:MM:SSZ
+  var $recipe_name;            // Name of recipe used
   var $recipe_id;              // ID of recipe
   var $state;                  // failed_job, cancelled_job, or successful_job
-  var $recipe_name;            // Name of recipe used
-  var $watermark_file;         // Location of watermark file
+  var $error_message;          // Error message if there was one.
+  var $finished_job_at;        // When the job finished. UTC YYYY-MM-DDTHH:MM:SSZ
   
-  var $input_media_file;       // DEPRECATED use $fcjn->input->url
-  var $output_media_file;      // DEPRECATED use $fcjn->output->url
+  // FlixCloudJobFile Objects
+  var $input;                 // $fcjn->input->url      (url, width, height, size, duration, cost)
+  var $output;                // $fcjn->output->url,    (url, width, height, size, duration, cost)
+  var $watermark;             // $fcjn->watermark->url  (url, size, cost)
+  var $thumbnail;             // $fcjn->thumbnail->url  (url, total_size, number_of_thumbnails, cost)
 
   function FlixCloudJobNotification($hash) {
-    
+
     $this->original_hash = $hash;
-    
+
     // Set attributes from XML on object
     // Creat job file objects from file info
     foreach($hash as $hash_key => $hash_value) {
@@ -369,20 +415,23 @@ class FlixCloudJobNotification {
       }
     }
   }
-  
+
   function set_input_media_file($hash_value) {
     $this->input = new FlixCloudJobInputFile($hash_value["url"], get_object_vars($hash_value));
-    $this->input_media_file = &$this->input->url; // Backward compatibility
   }
-  
+
   function set_output_media_file($hash_value) {
     $this->output = new FlixCloudJobOutputFile($hash_value["url"], get_object_vars($hash_value));
-    $this->output_media_file = &$this->output->url; // Backward compatibility
   }
-  
-  function set_watermark_media_file($hash_value) {
+
+  function set_watermark_file($hash_value) {
     $this->watermark = new FlixCloudJobWatermarkFile($hash_value["url"], get_object_vars($hash_value));
   }
+  
+  function set_thumbnail_media_file($hash_value) {
+    $this->thumbnail = new FlixCloudJobThumbnailFile($hash_value["url"], get_object_vars($hash_value));
+  }
+  
 }
 
 ?>
