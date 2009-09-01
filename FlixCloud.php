@@ -2,7 +2,7 @@
 /*
 
   FlixCloud API PHP Library
-  Version: 1.0.6
+  Version: 1.1
   Author: Steve Heffernan <steve@sevenwire.com>
   See the README file for info on how to use this library.
 
@@ -21,6 +21,9 @@ class FlixCloudJob {
   var $watermark;   // FlixCloudJobWatermarkFile Object
   var $thumbnail;   // FlixCloudJobThumbnailFile Object
 
+  var $notification_url; // Sets notification URL if supplied.
+  var $pass_through; // Allows user to pass an internally used value back with notification.
+  
   // cURL Options
   var $timeout = 0; // Time in seconds to timeout send request. 0 is no timeout.
 
@@ -50,12 +53,15 @@ class FlixCloudJob {
       if($params["output_url"]) $this->set_output($params["output_url"], array("user" => $params["output_user"], "password" => $params["output_password"]));
       if($params["watermark_url"]) $this->set_watermark($params["watermark_url"], array("user" => $params["watermark_user"], "password" => $params["watermark_password"]));
       if($params["thumbnail_url"]) $this->set_thumbnail($params["thumbnail_url"], array("prefix" => $params["thumbnail_prefix"], "user" => $params["thumbnail_user"], "password" => $params["thumbnail_password"]));
+      
+      if($params["notification_url"]) $this->notification_url = $params["notification_url"];
+      if($params["pass_through"]) $this->pass_through = $params["pass_through"];
 
       if($params["insecure"]) $this->insecure = true;
       if($params["certificate"]) $this->certificate = $params["certificate"];
-      
+
       if($params["api_url"]) $this->api_url = $params["api_url"];
-      
+
       // If params array is used it sends by default
       if($params["send"] !== false) $this->send();
     } elseif(intval($params) > 0) {
@@ -222,7 +228,15 @@ class FlixCloudJob {
         ),
       ),
     );
-
+    
+    if($this->notification_url) {
+      $xml_hash["api-request"]["notification-url"] = $this->notification_url;
+    }
+    
+    if($this->pass_through) {
+      $xml_hash["api-request"]["pass-through"] = $this->pass_through;
+    }
+    
     return $this->hash_to_xml($xml_hash);
   }
 
@@ -251,7 +265,7 @@ class FlixCloudJob {
   function tag($tag_name, $tag_content) {
     return '<'.$tag_name.'>'.$tag_content.'</'.$tag_name.'>';
   }
-  
+
   // Flatten a basic array. Kinda surpised PHP doesn't have this.
   function array_flatten(&$array) {
     foreach($array as $key => $val) {
@@ -352,7 +366,7 @@ class FlixCloudJobWatermarkFile extends FlixCloudJobFile {
 class FlixCloudJobThumbnailFile extends FlixCloudJobFile {
   var $name = "Thumbnail";
   var $prefix;
-  
+
   // Info received from notification
   var $total_size;
   var $number_of_thumbnails;
@@ -384,7 +398,7 @@ class FlixCloudNotificationHandler {
 class FlixCloudJobNotification {
 
   var $original_hash;          // From XML object
-  
+
   var $id;                     // The job's ID
   var $initialized_job_at;     // When the job was initialized. UTC YYYY-MM-DDTHH:MM:SSZ
   var $recipe_name;            // Name of recipe used
@@ -392,7 +406,8 @@ class FlixCloudJobNotification {
   var $state;                  // failed_job, cancelled_job, or successful_job
   var $error_message;          // Error message if there was one.
   var $finished_job_at;        // When the job finished. UTC YYYY-MM-DDTHH:MM:SSZ
-  
+  var $pass_through;           // User defined value passed from job request
+
   // FlixCloudJobFile Objects
   var $input;                 // $fcjn->input->url      (url, width, height, size, duration, cost)
   var $output;                // $fcjn->output->url,    (url, width, height, size, duration, cost)
@@ -427,11 +442,88 @@ class FlixCloudJobNotification {
   function set_watermark_file($hash_value) {
     $this->watermark = new FlixCloudJobWatermarkFile($hash_value["url"], get_object_vars($hash_value));
   }
-  
+
   function set_thumbnail_media_file($hash_value) {
     $this->thumbnail = new FlixCloudJobThumbnailFile($hash_value["url"], get_object_vars($hash_value));
   }
-  
+
+}
+
+
+// Class for checking the status of a job and its tasks.
+class FlixCloudJobStatusChecker {
+
+  var $api_key;
+  var $job_id;
+
+  var $result;
+  var $result_hash;
+  var $errors = array();
+  var $check_successful;
+
+  function FlixCloudJobStatusChecker($api_key, $job_id) {
+    $this->api_key = $api_key;
+    $this->job_id = $job_id;
+    $this->check_successful = $this->send();
+  }
+
+  function send() {
+
+    // Set up cURL connection
+    $ch = curl_init("https://www.flixcloud.com/jobs/".$this->job_id."/status");
+    curl_setopt_array($ch, array(
+      CURLOPT_RETURNTRANSFER => 1,
+      CURLOPT_HEADER => 0, // Don't return the header in result
+      CURLOPT_HTTPHEADER => array("Accept: text/xml", "Content-type: application/xml"), // Required headers
+      CURLOPT_POST => 0,
+      CURLOPT_CONNECTTIMEOUT => 0
+    ));
+
+    // Bypass cert check for status check to avoid issues
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
+
+    // HTTP Basic Auth
+    curl_setopt($ch, CURLOPT_HTTPAUTH, CURLAUTH_BASIC);
+    curl_setopt($ch, CURLOPT_USERPWD, 'user:'.$this->api_key);
+
+    // Execute
+    $this->result = curl_exec($ch);
+
+    // Close cURL connection;
+    curl_close($ch);
+
+    if($this->result) {
+      if(strpos($this->result, "Access denied.") > -1) {
+        $this->errors[] = $this->result;
+        return false;
+      } else {
+        $this->result_hash = get_object_vars(new SimpleXMLElement($this->result));
+        return true;
+      }
+    } else {
+      if (curl_errno($ch)) {
+        $this->errors[] = "Curl error (".curl_errno($ch)."): ".curl_error($ch);
+      }
+      return false;
+    }
+  }
+
+  function get_job_status() {
+    if($this->check_successful) {
+      return $this->result_hash["task-state"];
+    } else {
+      return false;
+    }
+  }
+
+}
+
+// Function that makes checking the overall status of a job a little simpler.
+function get_flix_cloud_job_status($api_id, $job_id) {
+  $checker = new FlixCloudJobStatusChecker($api_id, $job_id);
+  $status = $checker->get_job_status();
+  return ($status) ? $status : "Status Unavailable";
 }
 
 ?>
