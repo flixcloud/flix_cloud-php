@@ -388,6 +388,7 @@ class FlixCloudJobThumbnailFile extends FlixCloudJobFile {
 class FlixCloudNotificationHandler {
   function catch_and_parse() {
     $incoming = file_get_contents('php://input');
+	$incoming = trim($incoming);
     $hash = get_object_vars(new SimpleXMLElement($incoming));
     return new FlixCloudJobNotification($hash);
   }
